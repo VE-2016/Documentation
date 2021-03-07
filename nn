@@ -1,0 +1,1170 @@
+using DevExpress.Pdf;
+using DevExpress.XtraPrinting;
+using DevExpress.XtraRichEdit;
+using DevExpress.XtraRichEdit.API.Layout;
+using DevExpress.XtraRichEdit.API.Native;
+using PdfSharp.Drawing;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.IO;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using PdfDocument = PdfSharp.Pdf.PdfDocument;
+using PdfName = PdfSharp.Pdf.PdfName;
+using PdfPage = PdfSharp.Pdf.PdfPage;
+using PdfRectangle = DevExpress.Pdf.PdfRectangle;
+
+namespace TemplatesEx
+{
+    public partial class Form1 : Form
+    {
+
+        string filename_doc = "d.docx";
+
+        static readonly string checkedCheckBox = '\u2612'.ToString();
+        static readonly string uncheckedCheckBox = '\u2610'.ToString();
+
+        bool mouseButtonPressed = false;
+        PdfDocumentPosition startPosition;
+        PdfDocumentPosition endPosition;
+
+        List<Spanner> w = null;
+
+        public Form1()
+        {
+            InitializeComponent();
+
+            richEditControl.LoadDocument("d.docx");
+
+            //DocumentPosition currentPosition = document.CaretPosition;
+            //DevExpress.XtraRichEdit.API.Native.CheckBox checkBox = document.FormFields.InsertCheckBox(currentPosition);
+            //checkBox.Name = "check1";
+            //checkBox.State = CheckBoxState.Checked;
+            //checkBox.SizeMode = CheckBoxSizeMode.Auto;
+            //checkBox.HelpTextType = FormFieldTextType.Custom;
+            //checkBox.HelpText = "help text";
+
+            Bitmap img = null;
+            using (RichEditDocumentServer server = new RichEditDocumentServer())
+            {
+                server.RtfText = richEditControl.Document.Sections[0].Page.ToString();
+                PrintableComponentLink pLink = new PrintableComponentLink(new PrintingSystem());
+                pLink.Component = server;
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    pLink.ExportToImage(ms, new ImageExportOptions() { Format = System.Drawing.Imaging.ImageFormat.Png });
+                    ms.Position = 0;
+                    img = new Bitmap(ms);
+                }
+                img.MakeTransparent();
+            }
+
+
+            pdfViewer1.FileAttachmentOpening += PdfViewer1_FileAttachmentOpening;
+
+            pdfViewer1.UriOpening += PdfViewer1_UriOpening;
+
+            richEditControl.MouseClick += RichEditControl_MouseClick;
+
+            pdfViewer1.MouseDown += PdfViewer1_MouseDown;
+
+            pdfViewer1.MouseMove += PdfViewer1_MouseMove;
+
+            pdfViewer1.MouseUp += PdfViewer1_MouseUp;
+
+            pdfViewer1.Paint += PdfViewer1_Paint;
+
+        }
+
+      
+
+        public void Hyperlinks(string filename)
+        {
+            using (PdfDocumentProcessor documentProcessor = new PdfDocumentProcessor())
+            {
+                documentProcessor.LoadDocument(filename);
+
+                foreach(var page in documentProcessor.Document.Pages)
+                {
+                    foreach(var nn in page.Annotations)
+                    {
+                        if(nn.GetType() == typeof(PdfLinkAnnotation))
+                        {
+                            PdfLinkAnnotation p = (PdfLinkAnnotation)nn;
+
+                            if(p.UriAction != null)
+                            {
+                                //PdfDocumentPosition()
+                            }
+                        }
+                    }
+                }
+
+
+                //PdfFormData formData = documentProcessor.GetFormData();
+                //IList<string> names = formData.GetFieldNames();
+
+
+                //string[] strings = new string[names.Count];
+                //names.CopyTo(strings, 0);
+
+            }
+        }
+
+        private void PdfViewer1_Paint(object sender, PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            //g.DrawRectangle(Pens.Red, new Rectangle(150, 150, 800, 50));
+
+            if (startPosition != null && endPosition != null)
+            {
+                PointF startPoint = pdfViewer1.GetClientPoint(startPosition);
+                PointF endPoint = pdfViewer1.GetClientPoint(endPosition);
+
+                using (SolidBrush blueBrush = new SolidBrush(Color.FromArgb(128, Color.Aqua)))
+                {
+                    g.FillRectangle(blueBrush,
+                    RectangleF.FromLTRB(Math.Min(startPoint.X, endPoint.X), Math.Min(startPoint.Y, endPoint.Y),
+                    Math.Max(startPoint.X, endPoint.X), Math.Max(startPoint.Y, endPoint.Y)));
+                }
+            }
+        }
+
+        private void PdfViewer1_MouseUp(object sender, MouseEventArgs e)
+        {
+            mouseButtonPressed = false;
+        }
+
+        private void PdfViewer1_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (mouseButtonPressed)
+            {
+                endPosition = pdfViewer1.GetDocumentPosition(e.Location);
+                pdfViewer1.Invalidate();
+            }
+        }
+
+        private void PdfViewer1_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                startPosition = pdfViewer1.GetDocumentPosition(e.Location);
+                endPosition = null;
+                mouseButtonPressed = true;
+                pdfViewer1.Invalidate();
+            }
+        }
+
+        private void RichEditControl_MouseClick(object sender, MouseEventArgs e)
+        {
+           
+        }
+
+        public void UpdateCheckState(SubDocument document, DocumentRange range, string prevState)
+        {
+            if (prevState.Equals(checkedCheckBox))
+                document.Replace(range, uncheckedCheckBox);
+            else if (prevState.Equals(uncheckedCheckBox))
+                document.Replace(range, checkedCheckBox);
+        }
+        public SubDocumentType GetLocation(LayoutElement element)
+        {
+            while (element != null)
+            {
+                switch (element.Type)
+                {
+                    case LayoutType.CommentsArea:
+                        return SubDocumentType.Comment;
+                    case LayoutType.Header:
+                        return SubDocumentType.Header;
+                    case LayoutType.Footer:
+                        return SubDocumentType.Footer;
+                    case LayoutType.TextBox:
+                        return SubDocumentType.TextBox;
+                }
+                element = element.Parent;
+            }
+            return SubDocumentType.Main;
+        }
+        private void PdfViewer1_UriOpening(object sender, DevExpress.XtraPdfViewer.PdfUriOpeningEventArgs e)
+        {
+            CheckIfNeeded(e.Uri.OriginalString);
+            e.Cancel = true;
+        }
+
+        private void PdfViewer1_FileAttachmentOpening(object sender, DevExpress.XtraPdfViewer.PdfFileAttachmentOpeningEventArgs e)
+        {
+            MessageBox.Show(e.FileAttachment.FileName);
+        }
+
+        public void Doc2Pdf(string filename)
+        {
+            RichEditDocumentServer wordProcessor = new RichEditDocumentServer();
+            wordProcessor.LoadDocument(filename, DocumentFormat.OpenXml);
+
+            //Specify export options:
+            PdfExportOptions options = new PdfExportOptions();
+            options.DocumentOptions.Author = "MJ";
+            options.Compressed = false;
+            options.ImageQuality = PdfJpegImageQuality.Highest;
+
+            //Export the document to the stream:
+            using (FileStream pdfFileStream = new FileStream("Document_PDF.pdf", FileMode.Create))
+            {
+                wordProcessor.ExportToPdf(pdfFileStream, options);
+            }
+           // System.Diagnostics.Process.Start("Document_PDF.pdf");
+        }
+
+        void Update()
+        {
+            pdfViewer1.SuspendLayout();
+            richEditControl.SuspendLayout();
+            var p = pdfViewer1.VerticalScrollPosition;
+            pdfViewer1.CloseDocument();
+            richEditControl.ExportToPdf("d.pdf");
+            pdfViewer1.LoadDocument("d.pdf");
+            pdfViewer1.VerticalScrollPosition = p;
+            richEditControl.ResumeLayout();
+            pdfViewer1.ResumeLayout();
+        }
+
+        private void SearchEditControl(RichEditControl richEditControl,string text, List<Spanner> spanners)
+        {
+
+            List<DocumentRange> results = new List<DocumentRange>();
+
+            var document = richEditControl.Document;
+            ISearchResult searchResult = richEditControl.Document.StartSearch(text);
+            while (searchResult.FindNext())
+            {
+                CharacterProperties cp = richEditControl.Document.BeginUpdateCharacters(searchResult.CurrentResult);
+                cp.Bold = true;
+                cp.ForeColor = System.Drawing.Color.Blue;
+                cp.BackColor = System.Drawing.Color.Yellow;
+                cp.Underline = UnderlineType.ThickSingle;
+                richEditControl.Document.EndUpdateCharacters(cp);
+
+                results.Add(searchResult.CurrentResult);
+             
+            }
+            int i = 0;
+            foreach(var r in results)
+            {
+                string link = i.ToString();
+                var h = document.Hyperlinks.Create(r.Start, 4);
+                h.NavigateUri = i.ToString();
+                h.ToolTip = i.ToString();
+                spanners.AddDocumentRange(i, r, link);
+                i++;
+            }
+        }
+
+        List<Spanner> spanners = new List<Spanner>();
+
+        List<Spanner> T = new List<Spanner>();
+
+        private void toolStripButton1_Click(object sender, EventArgs e)
+        {
+            // Doc2Pdf("d.docx");
+
+            //  var s = Words("d.pdf");
+
+            //  var w = s.Where(p => p.Contains("<S>")).ToList();
+
+            // var s = Referenced("e.pdf");
+
+            pdfViewer1.CloseDocument();
+
+            richEditControl.SaveDocument(filename_doc, DocumentFormat.Doc);
+
+            richEditControl.ExportToPdf(@"d.pdf");
+
+            this.pdfViewer1.LoadDocument(@"d.pdf");
+
+
+            
+            List<Spanner> q = NewMethod("<S>").ToArray().ToList();
+
+            spanners = q;
+
+            SearchEditControl(richEditControl, "<S>", q);//U+2611
+            string codePoint = "2611";
+
+            int code = int.Parse(codePoint, System.Globalization.NumberStyles.HexNumber);
+            string unicodeString = char.ConvertFromUtf32(code);
+
+            foreach (var s in spanners)
+            {
+                richEditControl.Document.Replace(s.rsecond, "");
+                richEditControl.Document.Replace(s.rfirst, unicodeString);
+            }
+
+            //MemoryStream ms = new MemoryStream();  
+            //richEditControl1.SaveDocument(ms, DevExpress.XtraRichEdit.DocumentFormat.OpenDocument);
+
+            pdfViewer1.CloseDocument();
+
+          //  richEditControl.ExportToPdf("d.pdf");
+
+            var ww = NewMethod("<T>").ToArray().ToList();
+
+            Modify(ww);
+
+            w = ww;
+
+          //  Update();
+        }
+
+
+        public void Modify(List<Spanner> ww)
+        {
+            using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+            {
+                
+
+             //   if (pdfViewer1..Document.AcroForm != null)
+                {
+                    var q = processor.Document.AcroForm.Fields[0];
+
+                }
+
+            }
+
+
+                pdfViewer1.SuspendLayout();
+
+            pdfViewer1.CloseDocument();
+
+            List<PdfTextSearchResults> WordCoordinates = new List<PdfTextSearchResults>();
+            using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+            {
+
+                richEditControl.ExportToPdf("d.pdf");
+
+                processor.LoadDocument("d.pdf");
+
+                int i = 1;
+
+                foreach(var s in ww)
+                {
+                    double top = s.first.Top;
+                    double left = s.first.Left;
+                    double bottom = s.second.Top - s.second.Height;
+                    double right = s.second.Left + s.second.Width;
+
+                    PdfRectangle r  = new PdfRectangle(left, bottom, right, top);
+
+                    PdfAcroFormTextBoxField textBox = new PdfAcroFormTextBoxField("textbox" + i++.ToString(), s.f.PageNumber, r);
+
+                
+
+                    textBox.Text = "Text Box";
+
+                    if (w != null)
+                        textBox.Text = Text;
+                    
+                    textBox.Appearance.BackgroundColor = new PdfRGBColor(0.8, 0.9, 0.8);
+                    textBox.Appearance.FontSize = 12;
+                    textBox.Multiline = true;
+
+                    processor.AddFormFields(textBox);
+
+                    s.textBox = textBox;
+
+                }
+
+                processor.SaveDocument("d.pdf");
+            }
+
+
+            pdfViewer1.LoadDocument("d.pdf");
+
+            pdfViewer1.ResumeLayout();
+        }
+
+        private static List<Spanner> NewMethod(string s)
+        {
+            List<Spanner> spanners = new List<Spanner>();
+
+            PdfTextSearchParameters c = new PdfTextSearchParameters();
+            c.WholeWords = false;
+            c.CaseSensitive = true;
+            List<PdfTextSearchResults> WordCoordinates = new List<PdfTextSearchResults>();
+            using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+            {
+                processor.LoadDocument("d.pdf");
+                PdfTextSearchResults currentWords = processor.FindText(s, c);
+
+                while (currentWords.Status == PdfTextSearchStatus.Found)
+                {
+
+                    WordCoordinates.Add(currentWords);
+                    //Switch to the next word
+                    currentWords = processor.FindText(s, c);
+
+                }
+            }
+            var q = WordCoordinates.ToArray().ToList();
+
+            while (q.Count > 1)
+            {
+                spanners.Add(Spanner.ToSpanner(q[0].ToTag(), q[1].ToTag()));
+                q.RemoveAt(0);
+                q.RemoveAt(0);
+            }
+            return spanners;
+        }
+
+        public void CheckIfNeeded(string link)
+        {
+
+
+
+            Spanner s = spanners.LinkToSpanner(link);
+
+            if (s == null)
+                return;
+
+            var document = richEditControl.Document;
+
+            document.BeginUpdate();
+          
+            DocumentRange range = s.rfirst;
+
+            DocumentRange rr = s.rsecond;
+
+            CharacterProperties cp = document.BeginUpdateCharacters(range.Start, rr.Start.ToInt() - range.End.ToInt());
+            //cp.FontName = "Comic Sans MS";
+          
+            if (s.isActive)
+            {
+               // cp.FontSize = 18;
+                cp.ForeColor = Color.Blue;
+            }
+            else
+            {
+              //  cp.FontSize = 14;
+                cp.ForeColor = Color.Black;
+            }
+
+            s.isActive = !s.isActive;
+            cp.BackColor = Color.Snow;
+            cp.Underline = UnderlineType.DoubleWave;
+            cp.UnderlineColor = Color.Red;
+
+            document.EndUpdateCharacters(cp);
+
+            Modify(w);
+
+          //  Update();
+        }
+
+
+        public static string GetElementStream(PdfPage page, int elementIndex)
+        {
+            string strStreamValue;
+            byte[] streamValue;
+            strStreamValue = "";
+
+            if (page.Contents.Elements.Count >= elementIndex)
+            {
+                PdfDictionary.PdfStream stream = page.Contents.Elements.GetDictionary(elementIndex).Stream;
+                streamValue = stream.Value;
+
+                foreach (byte b in streamValue)
+                {
+                    strStreamValue += (char)b;
+                }
+            }
+            return strStreamValue;
+
+            
+
+            //Page.Contents.Elements.RemoveAt(8)
+        }
+
+        public void AddAcroForm(string filename)
+        {
+                        using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+            {
+                // Load a document.
+                processor.LoadDocument(filename);
+
+                // Create a text box field specifying the field name, page number, and field location on the page.
+                PdfAcroFormTextBoxField textBox = new PdfAcroFormTextBoxField("text box", 1, new PdfRectangle(230, 690, 280, 710));
+
+                // Specify text box text, and appearance.
+                textBox.Text = "Text Box";
+                textBox.Appearance.BackgroundColor = new PdfRGBColor(0.8, 0.5, 0.3);
+                textBox.Appearance.FontSize = 12;
+
+       
+
+                // Create a radio group field specifying its name and the page number.
+                PdfAcroFormRadioGroupField radioGroup = new PdfAcroFormRadioGroupField("Gender Group", 1);
+
+                // Add the first radio button to the group and specify its location using a PdfRectangle object.
+                radioGroup.AddButton("button1", new PdfRectangle(230, 635, 250, 655));
+
+                // Add the second radio button to the group.
+                radioGroup.AddButton("button2", new PdfRectangle(310, 635, 330, 655));
+
+                // Specify radio group selected index, and appearance.
+                radioGroup.SelectedIndex = 0;
+                radioGroup.Appearance.BorderAppearance = new PdfAcroFormBorderAppearance()
+                { Color = new PdfRGBColor(0.8, 0.5, 0.3), Width = 3 };
+
+                // Add form fields to the page.
+                processor.AddFormFields(textBox, radioGroup);
+
+                // Save the result document.
+                processor.SaveDocument(filename);
+            }
+        }
+
+        public static void AddTextBox(string filename)
+        {
+
+            using (PdfSharp.Pdf.PdfDocument pdf = /*PdfReader.Open(filename))// ; ;*/ new PdfDocument())
+            {
+
+                var f = pdf.AcroForm;
+
+
+                PdfPage page1 = pdf.AddPage();
+
+                double left = 50;
+                double right = 200;
+                double bottom = 450;
+                double top = 425;
+
+                PdfArray rect = new PdfArray(pdf);
+                rect.Elements.Add(new PdfReal(left));
+                rect.Elements.Add(new PdfReal(bottom));
+                rect.Elements.Add(new PdfReal(right));
+                rect.Elements.Add(new PdfReal(top));
+                pdf.Internals.AddObject(rect);
+
+                PdfDictionary form = new PdfDictionary(pdf);
+                form.Elements.Add("/Filter", new PdfName("/FlateDecode"));
+                form.Elements.Add("/Length", new PdfInteger(20));
+                form.Elements.Add("/Subtype", new PdfName("/Form"));
+                form.Elements.Add("/Type", new PdfName("/XObject"));
+                pdf.Internals.AddObject(form);
+
+                PdfDictionary appearanceStream = new PdfDictionary(pdf);
+                appearanceStream.Elements.Add("/N", form);
+                
+                pdf.Internals.AddObject(appearanceStream);
+
+                PdfDictionary textfield = new PdfDictionary(pdf);
+                textfield.Elements.Add("/FT", new PdfName("/Btn"/*Tx*/));
+                textfield.Elements.Add("/Subtype", new PdfName("/Widget"));
+                //textfield.Elements.Add("/T", new PdfString("fldHelloWorld"));
+                //textfield.Elements.Add("/V", new PdfString("Hello World!"));
+                textfield.Elements.Add("/CA", new PdfString("BUTTON"));
+                textfield.Elements.Add("/Type", new PdfName("/Annot"));
+                textfield.Elements.Add("/AP", appearanceStream);
+                textfield.Elements.Add("/Rect", rect);
+                textfield.Elements.Add("/P", page1);
+               
+                pdf.Internals.AddObject(textfield);
+
+                PdfArray annotsArray = new PdfArray(pdf);
+                annotsArray.Elements.Add(textfield);
+                
+                pdf.Internals.AddObject(annotsArray);
+
+                page1.Elements.Add("/Annots", annotsArray);
+
+               // draw rectangle around text field
+               XGraphics gfx = XGraphics.FromPdfPage(page1);
+                gfx.DrawRectangle(new XPen(XColors.DarkOrange, 2), left, bottom, right, bottom - top);
+
+                XPdfFontOptions options = new XPdfFontOptions(PdfFontEncoding.Unicode,
+                                              PdfFontEmbedding.Always);
+
+                XFont prevCheckboxFont = new XFont("WingDings", 12, XFontStyle.Regular, options);
+
+                XRect prevCheckboxPos = new XRect(XUnit.FromInch(3.20), XUnit.FromInch(3.30),
+                                                  XUnit.FromInch(1.25), XUnit.FromInch(.10));
+                string prevCheckboxText = "\u00FE";
+                gfx.DrawString(prevCheckboxText, prevCheckboxFont, XBrushes.Black,
+                               prevCheckboxPos, XStringFormats.TopLeft);
+
+
+                // Save document
+                const string filename2 = @"cc.pdf";
+                pdf.Save(filename2);
+                pdf.Close();
+
+                Process.Start(filename2);
+            }
+        }
+
+        public static void AddTextBox()
+        {
+
+            using (PdfDocument pdf = new PdfDocument())
+            {
+                PdfPage page1 = pdf.AddPage();
+
+                double left = 50;
+                double right = 200;
+                double bottom = 750;
+                double top = 725;
+
+                PdfArray rect = new PdfArray(pdf);
+                rect.Elements.Add(new PdfReal(left));
+                rect.Elements.Add(new PdfReal(bottom));
+                rect.Elements.Add(new PdfReal(right));
+                rect.Elements.Add(new PdfReal(top));
+                pdf.Internals.AddObject(rect);
+
+                PdfDictionary form = new PdfDictionary(pdf);
+                form.Elements.Add("/Filter", new PdfName("/FlateDecode"));
+                form.Elements.Add("/Length", new PdfInteger(20));
+                form.Elements.Add("/Subtype", new PdfName("/Form"));
+                form.Elements.Add("/Type", new PdfName("/XObject"));
+                pdf.Internals.AddObject(form);
+
+                PdfDictionary appearanceStream = new PdfDictionary(pdf);
+                appearanceStream.Elements.Add("/N", form);
+                pdf.Internals.AddObject(appearanceStream);
+
+                PdfDictionary textfield = new PdfDictionary(pdf);
+                textfield.Elements.Add("/FT", new PdfName("/Tx"));
+                textfield.Elements.Add("/DA", new PdfString("test"));
+                textfield.Elements.Add("/Subtype", new PdfName("/Widget"));
+                textfield.Elements.Add("/T", new PdfString("fldHelloWorld"));
+                textfield.Elements.Add("/V", new PdfString("Hello World!"));
+                textfield.Elements.Add("/Type", new PdfName("/Annot"));
+                textfield.Elements.Add("/AP", appearanceStream);
+                textfield.Elements.Add("/Rect", rect);
+                textfield.Elements.Add("/P", page1);
+                pdf.Internals.AddObject(textfield);
+
+                PdfArray annotsArray = new PdfArray(pdf);
+                annotsArray.Elements.Add(textfield);
+                pdf.Internals.AddObject(annotsArray);
+
+                page1.Elements.Add("/Annots", annotsArray);
+
+                // draw rectangle around text field
+                //XGraphics gfx = XGraphics.FromPdfPage(page1);
+                //gfx.DrawRectangle(new XPen(XColors.DarkOrange, 2), left, 40, right, bottom - top);
+
+                // Save document
+                const string filename = @"test.pdf";
+                pdf.Save(filename);
+                pdf.Close();
+
+                Process.Start(filename);
+            }
+        }
+
+            public void PDFParser()
+        {
+            var streamWriter = new StreamWriter("output.txt", false);
+            String outputText = "";
+
+            try
+            {
+                PdfDocument inputDocument = PdfReader.Open("input.pdf", PdfDocumentOpenMode.ReadOnly);
+
+                foreach (PdfPage page in inputDocument.Pages)
+                {
+                    for (int index = 0; index < page.Contents.Elements.Count; index++)
+                    {
+                        PdfDictionary.PdfStream stream = page.Contents.Elements.GetDictionary(index).Stream;
+                        outputText = new PDFTextExtractor().ExtractTextFromPDFBytes(stream.Value);
+
+                        streamWriter.WriteLine(outputText);
+                    }
+                }
+
+            }
+            catch (Exception e)
+            {
+
+            }
+            streamWriter.Close();
+        }
+
+        public List<string> Words(string filename)
+        {
+            List<string> s = new List<string>();
+
+           // var streamWriter = new StreamWriter("output.txt", false);
+            String outputText = "";
+
+            try
+            {
+                PdfDocument inputDocument = PdfReader.Open(filename, PdfDocumentOpenMode.ReadOnly);
+
+                foreach (PdfPage page in inputDocument.Pages)
+                {
+                    for (int index = 0; index < page.Contents.Elements.Count; index++)
+                    {
+                        PdfDictionary.PdfStream stream = page.Contents.Elements.GetDictionary(index).Stream;
+                        outputText = new PDFTextExtractor().ExtractTextFromPDFBytes(stream.Value);
+
+                        // streamWriter.WriteLine(outputText);
+
+                        s.Add(outputText);
+                    }
+                }
+
+            }
+            catch (Exception e)
+            {
+
+            }
+            // streamWriter.Close();
+
+            return s;
+        }
+
+        private List<string> Referenced(string filename/*, PdfDocument document*//*, string referenceString*/)
+        {
+
+            PdfDocument document = PdfReader.Open(filename, PdfDocumentOpenMode.ReadOnly);
+
+            List<string> s = new List<string>();
+
+            // this procedure removes any pages from the pdf document that do not contain
+            // the reference string
+
+            int pageNo = -1;
+            string strStreamValue;
+            byte[] streamValue;
+            bool[] keepPageArray;
+            keepPageArray = new bool[document.Pages.Count];
+
+            // iterate through the pages
+            foreach (PdfPage page in document.Pages)
+            {
+                pageNo++;
+                strStreamValue = "";
+
+                // put the stream value for every element on the page in a string variable.
+                for (int i = 0; i < page.Contents.Elements.Count; i++)
+                {
+
+                    StringWriter sw = new StringWriter();
+
+                    PdfDictionary.PdfStream stream = page.Contents.Elements.GetDictionary(i).Stream;
+                    streamValue = stream.Value;
+                    foreach (byte b in streamValue)
+                    {
+                        sw.Write((char)b);
+                        //strStreamValue += (char)b;
+                    }
+
+                    s.Add(sw.ToString());
+                }
+                // flag those pages that contain the reference value
+              //  keepPageArray[pageNo] = strStreamValue.Contains(referenceString);
+            }
+
+            // Now, remove the pages we identified.  We're doing this in reverse order
+            // because the deletion of an earlier page moves the rest of the pages up
+            // on page.  This keeps us from deleting the wrong pages.
+            for (int i = keepPageArray.Length - 1; i > -1; i--)
+            {
+                if (!keepPageArray[i])
+                {
+                    PdfPage deletePage = document.Pages[i];
+                    //document.Pages.Remove(deletePage);
+                }
+            }
+
+            return s;
+        }
+
+        private void toolStripButton2_Click(object sender, EventArgs e)
+        {
+            richEditControl.SaveDocument( "d.docx", DocumentFormat.OpenXml);
+        }
+
+        private void toolStripButton3_Click(object sender, EventArgs e)
+        {
+            Form2 form = new Form2();
+            form.ShowDialog();
+        }
+
+        private void toolStripButton4_Click(object sender, EventArgs e)
+        {
+            richEditControl.ExportToPdf(@"d.pdf");
+
+            this.pdfViewer1.LoadDocument(@"d.pdf");
+
+            using (PdfDocumentProcessor pdfProcessor = new PdfDocumentProcessor())
+            {
+                pdfProcessor.LoadDocument("_b.pdf");
+
+                var f = pdfProcessor.Document.AcroForm;
+            }
+        }
+
+        private void toolStripButton5_Click(object sender, EventArgs e)
+        {
+
+            var document = richEditControl.Document;
+
+            var c = richEditControl.Document.CaretPosition;
+
+            //Create a hyperlink from a found range
+            var h = document.Hyperlinks.Create(c, 10);
+
+            //Set the URI and the tooltip for the created hyperlink
+            h.NavigateUri = "F-1";// "https://www.devexpress.com/Products/NET/Controls/WinForms/Rich_Editor/";
+            h.ToolTip = "Form-1";
+            h.Target = "F-2";// "https://www.devexpress.com/Products/NET/Controls/WinForms/Rich_Editor/";
+        }
+
+        private void toolStripButton6_Click(object sender, EventArgs e)
+        {
+            DocumentPosition currentPosition = richEditControl.Document.CaretPosition;
+            DevExpress.XtraRichEdit.API.Native.CheckBox checkBox = richEditControl.Document.FormFields.InsertCheckBox(currentPosition);
+            checkBox.Name = "check1";
+            checkBox.State = DevExpress.XtraRichEdit.API.Native.CheckBoxState.Checked;
+            checkBox.SizeMode = CheckBoxSizeMode.Auto;
+            checkBox.HelpTextType = FormFieldTextType.Custom;
+            checkBox.HelpText = "help text";
+
+            
+
+        }
+
+        private void toolStripButton7_Click(object sender, EventArgs e)
+        {
+
+            richEditControl.SaveDocument(filename_doc, DocumentFormat.Doc);
+
+            //richEditControl.ExportToPdf(@"d.pdf");
+
+           // this.pdfViewer1.LoadDocument(@"d.pdf");
+
+
+            return;
+
+            var c = richEditControl.Document.CaretPosition;
+
+            var document = richEditControl.Document;
+            document.AppendText("Line One\nLine Two\nLine Three");
+            Shape myPicture = document.Shapes.InsertTextBox(c);
+            myPicture.HorizontalAlignment = ShapeHorizontalAlignment.Center;
+            myPicture.Fill.Color = Color.Blue;
+        }
+    }
+
+}
+
+     
+
+    public class PDFTextExtractor
+    {
+        /// BT = Beginning of a text object operator
+        /// ET = End of a text object operator
+        /// Td move to the start of next line
+        ///  5 Ts = superscript
+        /// -5 Ts = subscript
+
+        #region Fields
+
+        #region _numberOfCharsToKeep
+        /// <summary>
+        /// The number of characters to keep, when extracting text.
+        /// </summary>
+        private static int _numberOfCharsToKeep = 15;
+        #endregion
+
+        #endregion
+
+
+
+        #region ExtractTextFromPDFBytes
+        /// <summary>
+        /// This method processes an uncompressed Adobe (text) object
+        /// and extracts text.
+        /// </summary>
+        /// <param name="input">uncompressed</param>
+        /// <returns></returns>
+        public string ExtractTextFromPDFBytes(byte[] input)
+        {
+            if (input == null || input.Length == 0) return "";
+
+            try
+            {
+                string resultString = "";
+
+                // Flag showing if we are we currently inside a text object
+                bool inTextObject = false;
+
+                // Flag showing if the next character is literal
+                // e.g. '\\' to get a '\' character or '\(' to get '('
+                bool nextLiteral = false;
+
+                // () Bracket nesting level. Text appears inside ()
+                int bracketDepth = 0;
+
+                // Keep previous chars to get extract numbers etc.:
+                char[] previousCharacters = new char[_numberOfCharsToKeep];
+                for (int j = 0; j < _numberOfCharsToKeep; j++) previousCharacters[j] = ' ';
+
+
+                for (int i = 0; i < input.Length; i++)
+                {
+                    char c = (char)input[i];
+
+                    if (inTextObject)
+                    {
+                        // Position the text
+                        if (bracketDepth == 0)
+                        {
+                            if (CheckToken(new string[] { "TD", "Td" }, previousCharacters))
+                            {
+                                resultString += "\n\r";
+                            }
+                            else
+                            {
+                                if (CheckToken(new string[] { "'", "T*", "\"" }, previousCharacters))
+                                {
+                                    resultString += "\n";
+                                }
+                                else
+                                {
+                                    if (CheckToken(new string[] { "Tj" }, previousCharacters))
+                                    {
+                                        resultString += " ";
+                                    }
+                                }
+                            }
+                        }
+
+                        // End of a text object, also go to a new line.
+                        if (bracketDepth == 0 &&
+                            CheckToken(new string[] { "ET" }, previousCharacters))
+                        {
+
+                            inTextObject = false;
+                            resultString += " ";
+                        }
+                        else
+                        {
+                            // Start outputting text
+                            if ((c == '(') && (bracketDepth == 0) && (!nextLiteral))
+                            {
+                                bracketDepth = 1;
+                            }
+                            else
+                            {
+                                // Stop outputting text
+                                if ((c == ')') && (bracketDepth == 1) && (!nextLiteral))
+                                {
+                                    bracketDepth = 0;
+                                }
+                                else
+                                {
+                                    // Just a normal text character:
+                                    if (bracketDepth == 1)
+                                    {
+                                        // Only print out next character no matter what.
+                                        // Do not interpret.
+                                        if (c == '\\' && !nextLiteral)
+                                        {
+                                            nextLiteral = true;
+                                        }
+                                        else
+                                        {
+                                            if (((c >= ' ') && (c <= '~')) ||
+                                                ((c >= 128) && (c < 255)))
+                                            {
+                                                resultString += c.ToString();
+                                            }
+
+                                            nextLiteral = false;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Store the recent characters for
+                    // when we have to go back for a checking
+                    for (int j = 0; j < _numberOfCharsToKeep - 1; j++)
+                    {
+                        previousCharacters[j] = previousCharacters[j + 1];
+                    }
+                    previousCharacters[_numberOfCharsToKeep - 1] = c;
+
+                    // Start of a text object
+                    if (!inTextObject && CheckToken(new string[] { "BT" }, previousCharacters))
+                    {
+                        inTextObject = true;
+                    }
+                }
+                return resultString;
+            }
+            catch
+            {
+                return "";
+            }
+        }
+        #endregion
+
+        #region CheckToken
+        /// <summary>
+        /// Check if a certain 2 character token just came along (e.g. BT)
+        /// </summary>
+        /// <param name="search">the searched token</param>
+        /// <param name="recent">the recent character array</param>
+        /// <returns></returns>
+        private bool CheckToken(string[] tokens, char[] recent)
+        {
+            foreach (string token in tokens)
+            {
+                if (token.Length > 1)
+                {
+                    if ((recent[_numberOfCharsToKeep - 3] == token[0]) &&
+                        (recent[_numberOfCharsToKeep - 2] == token[1]) &&
+                        ((recent[_numberOfCharsToKeep - 1] == ' ') ||
+                        (recent[_numberOfCharsToKeep - 1] == 0x0d) ||
+                        (recent[_numberOfCharsToKeep - 1] == 0x0a)) &&
+                        ((recent[_numberOfCharsToKeep - 4] == ' ') ||
+                        (recent[_numberOfCharsToKeep - 4] == 0x0d) ||
+                        (recent[_numberOfCharsToKeep - 4] == 0x0a))
+                        )
+                    {
+                        return true;
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+
+            }
+            return false;
+        }
+        #endregion
+  
+
+   
+
+}
+
+public class Tag
+{
+    public string Name { get; set; } = "";
+
+    public PdfOrientedRectangle r { get; set; }
+
+    public int PageNumber { get; set; } = 0;
+}
+
+public class Spanner
+{
+    public string Name { get; set; } = "";
+
+    public PdfOrientedRectangle first { get; set; }
+
+    public PdfOrientedRectangle second { get; set; }
+
+    public DocumentRange rfirst { get; set; }
+    
+    public DocumentRange rsecond { get; set; }
+
+    public Tag f { get; set; }
+
+    public Tag s { get; set; }
+
+    public string linkfirst { get; set; }
+
+    public string linksecond { get; set; }
+
+    public string Text { get; set; } = "";
+
+    public bool isActive { get; set; } = true;
+
+    public PdfAcroFormTextBoxField textBox = null;
+
+  
+    public void AddDocumentRange(int i, DocumentRange r, string link)
+    {
+        if(i == 0)
+        {
+            rfirst = r;
+            linkfirst = link;
+        }
+        else
+        {
+            rsecond = r;
+            linksecond = link;
+        }
+    }
+
+    static public Spanner ToSpanner(Tag _f, Tag _s)
+    {
+        return new Spanner() { Name = _f.Name, first = _f.r, second = _s.r, f = _f, s = _s };
+    }
+}
+
+public static class Ext
+{
+
+    static public Tag ToTag(this PdfTextSearchResults s)
+    {
+
+        Tag t = new Tag();
+
+        var ws = s.Words.Select(w => w.Text).ToList();
+
+        t.Name = string.Concat(ws);
+
+        t.r = s.Rectangles[0];
+
+        t.PageNumber = s.PageNumber;
+
+        return t;
+
+    }
+
+    static public void AddDocumentRange(this List<Spanner> s, int i, DocumentRange r, string link)
+    {
+        int index = i / 2;
+
+        int c = s.Count;
+
+        if (c == 0)
+            return;
+
+        if (index >= c)
+            return;
+
+        s[index].AddDocumentRange(i % 2, r, link);
+    }
+
+    static public Spanner LinkToSpanner(this List<Spanner> s, string link)
+    {
+
+        foreach(var spanner in s)
+        {
+            if (spanner.linkfirst == link || spanner.linksecond == link)
+                return spanner;
+        }
+        return null;
+    }
+
+}
