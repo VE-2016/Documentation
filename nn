@@ -1168,3 +1168,20 @@ public static class Ext
     }
 
 }
+
+     using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+            {
+                processor.LoadDocument("d.pdf");
+
+                if (processor.Document.AcroForm != null)
+                {
+                    int i = 0;
+                  foreach(var f in processor.Document.AcroForm.Fields)
+                    {
+                        PdfTextFormField ff = (PdfTextFormField)f;
+                        ww[i++].Text = ff.Text;
+                    }
+
+                }
+                processor.CloseDocument();
+            }
