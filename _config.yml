@@ -1,1 +1,1447 @@
-theme: jekyll-theme-cayman
+using DevExpress.Pdf;
+using DevExpress.Utils.Extensions;
+using DevExpress.XtraPdfViewer;
+using DevExpress.XtraPrinting;
+using DevExpress.XtraRichEdit;
+using DevExpress.XtraRichEdit.API.Layout;
+using DevExpress.XtraRichEdit.API.Native;
+
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using static Ext;
+
+using static PDF;
+using Document = DevExpress.XtraRichEdit.API.Native.Document;
+using PdfRectangle = DevExpress.Pdf.PdfRectangle;
+
+namespace TemplatesEx
+{
+    public partial class SzablonyForm : Form
+    {
+
+        string filename_doc = "d.docx";
+
+        static readonly string checkedCheckBox = '\u2612'.ToString();
+        static readonly string uncheckedCheckBox = '\u2610'.ToString();
+
+      
+        public TagKind tagKind = TagKind.T;
+
+        public SzablonyForm()
+        {
+            InitializeComponent();
+
+            
+            treeView.AfterSelect += TreeView_AfterSelect;
+
+            PDF.tv = treeView;
+
+            PDF.tvg = treeView1;
+
+            pdf = new PDF();
+            pdf.rec = richEditControl;
+            pdf.pdfViewer = pdfViewer1;
+
+            pdf.LoadFiles();
+
+            Ext.InitTagTreeView(PDF.tvg);
+
+            PDF.tvg.AfterSelect += Tvg_AfterSelect;
+
+           // pdf.Load();
+
+        }
+
+        private void Tvg_AfterSelect(object sender, TreeViewEventArgs e)
+        {
+            TreeNode node = treeView1.SelectedNode;
+            if (node == null)
+                return;
+            if (node.Tag == null)
+                return;
+            if (node.Tag.GetType() != typeof(TagKind))
+                return;
+            TagKind t = (TagKind)node.Tag;
+            tagKind = t;
+
+            var T = pdf.GetTags(t);
+
+            tvg.BeginUpdate();
+
+            node.Nodes.Clear();
+
+            lbTags.Items.Clear();
+
+            foreach(var n in T)
+            {
+                TreeNode nodes = new TreeNode(n);
+                node.Nodes.Add(nodes);
+
+                lbTags.Items.Add(n);
+            }
+
+
+            tvg.EndUpdate();
+        }
+
+        private void TreeView_AfterSelect(object sender, TreeViewEventArgs e)
+        {
+            richTextBox1.Text = treeView.SelectedNode.Text;
+        }
+
+        PDF pdf { get; set; }
+
+        public void Hyperlinks(string filename)
+        {
+            using (PdfDocumentProcessor documentProcessor = new PdfDocumentProcessor())
+            {
+                documentProcessor.LoadDocument(filename);
+
+                foreach (var page in documentProcessor.Document.Pages)
+                {
+                    foreach (var nn in page.Annotations)
+                    {
+                        if (nn.GetType() == typeof(PdfLinkAnnotation))
+                        {
+                            PdfLinkAnnotation p = (PdfLinkAnnotation)nn;
+
+                            if (p.UriAction != null)
+                            {
+                                //PdfDocumentPosition()
+                            }
+                        }
+                    }
+                }
+
+
+                //PdfFormData formData = documentProcessor.GetFormData();
+                //IList<string> names = formData.GetFieldNames();
+
+
+                //string[] strings = new string[names.Count];
+                //names.CopyTo(strings, 0);
+
+            }
+        }
+        public void Doc2Pdf(string filename)
+        {
+            RichEditDocumentServer wordProcessor = new RichEditDocumentServer();
+            wordProcessor.LoadDocument(filename, DocumentFormat.OpenXml);
+
+            //Specify export options:
+            PdfExportOptions options = new PdfExportOptions();
+            options.DocumentOptions.Author = "MJ";
+            options.Compressed = false;
+            options.ImageQuality = PdfJpegImageQuality.Highest;
+
+            //Export the document to the stream:
+            using (FileStream pdfFileStream = new FileStream("Document_PDF.pdf", FileMode.Create))
+            {
+                wordProcessor.ExportToPdf(pdfFileStream, options);
+            }
+            // System.Diagnostics.Process.Start("Document_PDF.pdf");
+        }
+
+
+
+        private void toolStripButton1_Click(object sender, EventArgs e)
+        {
+        }
+
+
+        public void Modify(List<Spanner> ww)
+        {
+
+            pdfViewer1.SuspendLayout();
+
+            try
+            {
+                if (pdfViewer1.IsDocumentOpened)
+                    pdfViewer1.SaveDocument("d.pdf");
+            }
+            catch (Exception ex)
+            {
+
+            }
+
+            using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+            {
+                processor.LoadDocument("d.pdf");
+
+                PdfAcroFormTextBoxField t = null;
+
+                if (processor.Document.AcroForm != null)
+                {
+                    int i = 0;
+
+                    var fields = processor.Document.AcroForm.Fields;
+
+                    // fields.IndexOf(t);
+
+
+                    var name = fields[1].Name;
+
+                    var index = fields.IndexOf(fields[1]);
+
+
+                    foreach (var f in processor.Document.AcroForm.Fields)
+                    {
+                        PdfTextFormField ff = (PdfTextFormField)f;
+
+
+
+
+
+                        //PdfAcroFormTextBoxField
+                        ww[i++].Text = ff.Text;
+                    }
+
+                }
+                processor.CloseDocument();
+            }
+
+            pdfViewer1.CloseDocument();
+
+
+            List<PdfTextSearchResults> WordCoordinates = new List<PdfTextSearchResults>();
+            using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+            {
+
+                richEditControl.ExportToPdf("d.pdf");
+
+                processor.LoadDocument("d.pdf");
+
+                int i = 1;
+
+                foreach (var s in ww)
+                {
+                    double top = s.first.Top;
+                    double left = s.first.Left;
+                    double bottom = s.second.Top - s.second.Height;
+                    double right = s.second.Left + s.second.Width;
+
+                    PdfRectangle r = new PdfRectangle(left, bottom, right, top);
+
+                    PdfAcroFormTextBoxField textBox = new PdfAcroFormTextBoxField("textbox" + i++.ToString(), s.f.PageNumber, r);
+
+
+                    textBox.Text = "Text Box";
+
+                    if (!string.IsNullOrEmpty(s.Text))
+                        textBox.Text = s.Text;
+
+                    textBox.Appearance.BackgroundColor = new PdfRGBColor(0.8, 0.9, 0.8);
+                    textBox.Appearance.FontSize = 12;
+                    textBox.Multiline = true;
+
+                    processor.AddFormFields(textBox);
+
+                    s.textBox = textBox;
+
+                }
+
+                processor.SaveDocument("d.pdf");
+            }
+
+
+            pdfViewer1.LoadDocument("d.pdf");
+
+            pdfViewer1.ResumeLayout();
+        }
+
+
+
+
+        private void toolStripButton4_Click(object sender, EventArgs e)
+        {
+            richEditControl.ExportToPdf(@"d.pdf");
+
+            this.pdfViewer1.LoadDocument(@"d.pdf");
+
+            using (PdfDocumentProcessor pdfProcessor = new PdfDocumentProcessor())
+            {
+                pdfProcessor.LoadDocument("_b.pdf");
+
+                var f = pdfProcessor.Document.AcroForm;
+            }
+        }
+
+ 
+
+
+        private void toolStripButton11_Click(object sender, EventArgs e)
+        {
+
+            pdf.Load(true);
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            TreeNode node = treeView1.SelectedNode;
+            if (node == null)
+                return;
+            if (node.Tag.GetType() != typeof(TagKind))
+                return;
+            TagKind t = (TagKind)node.Tag;
+            tagKind = t;
+
+            pdf.AddTag(tagKind);
+        }
+
+        private void LoadTags(TagKind t)
+        {
+            var T = pdf.GetTags(t);
+
+            tvg.BeginUpdate();
+
+            TreeNode node = tvg.NodeByTag(t);
+
+            node.Nodes.Clear();
+
+            lbTags.Items.Clear();
+
+            foreach (var n in T)
+            {
+                TreeNode nodes = new TreeNode(n);
+                node.Nodes.Add(nodes);
+
+                lbTags.Items.Add(n);
+            }
+
+            tvg.EndUpdate();
+        }
+
+        private void lbTags_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            int index = lbTags.SelectedIndex;
+            if (index < 0)
+                return;
+            pdf.RemoveTagByIndex(tagKind.ToStringEx(), index);
+
+            LoadTags(tagKind);
+        }
+
+        private void toolStripButton10_Click(object sender, EventArgs e)
+        {
+            pdf = new PDF();
+            pdf.rec = richEditControl;
+            pdf.pdfViewer = pdfViewer1;
+
+            pdf.LoadFilesForEdit();
+
+
+            pdf.Load();
+        }
+
+        private void toolStripButton1_Click_1(object sender, EventArgs e)
+        {
+            pdf.ReloadEditedFiles();
+        }
+
+        private void toolStripButton5_Click(object sender, EventArgs e)
+        {
+            if (pdf == null)
+                return;
+            if (pdf.rec == null)
+                return;
+            pdf.rec.SaveDocument("d.docx", DocumentFormat.Doc);
+        }
+    }
+
+}
+
+
+public class Tag
+{
+    public string Name { get; set; } = "";
+
+    public PdfTextSearchResults sw { get; set; }
+    public PdfOrientedRectangle r { get; set; }
+
+    public int PageNumber { get; set; } = 0;
+}
+
+public class Spanner
+{
+    public string Name { get; set; } = "";
+
+    public Tag T0 { get; set; }
+
+    public Tag T1 { get; set; }
+    public PdfOrientedRectangle first { get; set; }
+
+    public PdfOrientedRectangle second { get; set; }
+
+    public DocumentRange rfirst { get; set; }
+
+    public DocumentRange rsecond { get; set; }
+
+    public Tag f { get; set; }
+
+    public Tag s { get; set; }
+
+    public string linkfirst { get; set; }
+
+    public string linksecond { get; set; }
+
+    public string Text { get; set; } = "";
+
+    public bool isActive { get; set; } = true;
+
+    public PdfAcroFormTextBoxField textBox = null;
+
+
+    public void AddDocumentRange(int i, DocumentRange r, string link)
+    {
+        if (i == 0)
+        {
+            rfirst = r;
+            linkfirst = link;
+        }
+        else
+        {
+            rsecond = r;
+            linksecond = link;
+        }
+    }
+
+    public string GetText(PdfDocumentProcessor processor)
+    {
+
+        var dy = T1.sw.Rectangles[0].Top /*- T1.sw.Rectangles[0].Height*/ - 5;
+
+        PdfDocumentPosition start = new PdfDocumentPosition(T0.sw.PageNumber, new PdfPoint(T0.sw.Rectangles[0].Left + T0.sw.Rectangles[0].Width + 3, T0.sw.Rectangles[0].Top - 5));
+
+        PdfDocumentPosition end = new PdfDocumentPosition(T1.sw.PageNumber, new PdfPoint(T1.sw.Rectangles[0].Left -5,  dy  /*T1.sw.Rectangles[0].Top - 15*/));
+
+        string text = processor.GetText(start, end, new PdfTextExtractionOptions() { ClipToCropBox = true });
+
+        return text;
+    }
+
+    public string GetText(Document d)
+    {
+
+
+        return "text";
+    }
+
+
+    static public Spanner ToSpanner(Tag _f, Tag _s)
+    {
+        return new Spanner() { Name = _f.Name, first = _f.r, second = _s.r, f = _f, s = _s, T0 = _f, T1 = _s };
+    }
+}
+
+public static class Ext
+{
+
+    static public TreeNode NodeByTag(this TreeView tv, TagKind t)
+    {
+        foreach(TreeNode node in tv.Nodes)
+        {
+            if (node.Tag == null)
+                continue;
+            if (node.Tag.GetType() != typeof(TagKind))
+                continue;
+            TagKind tt = (TagKind)node.Tag;
+
+            if (tt == t)
+                return node;
+
+        }
+        return null;
+    }
+
+    static public string ToStringEx(this TagKind t)
+    {
+        switch (t)
+        {
+            case TagKind.T:
+                return @"<T>";
+            case TagKind.F:
+                return @"<F>";
+            case TagKind.S:
+                return @"<S>";
+            default:
+                return "";
+        }
+    }
+
+    static public void InitTagTreeView(TreeView tv)
+    {
+        TreeNode node = new TreeNode("T - wprowadz tekst");
+        node.Tag = TagKind.T;
+        tv.Nodes.Add(node);
+        node = new TreeNode("F - wprowadz tekst");
+        node.Tag = TagKind.F;
+        tv.Nodes.Add(node);
+        node = new TreeNode("S - pokaz / zakryj tekst");
+        node.Tag = TagKind.S;
+        tv.Nodes.Add(node);
+
+        tv.HideSelection = false;
+    }
+
+    static public PdfDocumentProcessor Processor(this string filename)
+    {
+
+        PdfDocumentProcessor processor = new PdfDocumentProcessor();
+        {
+            processor.LoadDocument(filename);
+            return processor;
+        }
+
+    }
+
+    static public PdfDocumentProcessor GetWords(this string filename)
+    {
+
+        PdfDocumentProcessor processor = new PdfDocumentProcessor();
+        {
+
+           
+            processor.LoadDocument(filename);
+            return processor;
+        }
+
+    }
+
+    static public List<PdfPageWord> Words(this PdfDocumentProcessor processor)
+    {
+        List<PdfPageWord> WordCoordinates = new List<PdfPageWord>();
+        {
+            PdfPageWord currentWord = (PdfPageWord)processor.NextWord();
+            while (currentWord != null)
+            {
+                for (int i = 0; i < currentWord.Rectangles.Count; i++)
+                {
+                    //Retrieve the rectangle encompassing the word
+                    var word = currentWord;
+
+                    //Add the segment's content and its coordinates to the list
+                    WordCoordinates.Add(word);
+                }
+                //Switch to the next word
+                currentWord = processor.NextWord();
+            }
+            return WordCoordinates;
+        }
+    }
+
+    static IList<PdfInteractiveFormField> Fields { get; set; }
+
+    static public void ToNode(this TreeView v, PdfAcroFormTextBoxField f)
+    {
+        TreeNode node = new TreeNode();
+        node.Text = f.Text;
+        v.Nodes.Add(node);
+    }
+
+    static public void AddAndReplace(this string name, string newvalue, Dictionary<string, PdfAcroFormTextBoxField> d)
+    {
+
+        
+
+        using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+        {
+            processor.LoadDocument("d.pdf");
+
+            processor.AddAndReplace(d, name, newvalue);
+                      
+
+            processor.SaveDocument("d.pdf");
+
+            processor.CloseDocument();
+        }
+
+    }
+
+    static public void AddAndReplace(this PdfDocumentProcessor processor, Dictionary<string, PdfAcroFormTextBoxField> d, string name, string newvalue = "")
+    {
+        if (!d.ContainsKey(name))
+            return;
+
+        var Field = d[name];
+
+        var fields = processor.Document.AcroForm.Fields;
+
+        var field = fields.Where(s => s.Name == name).ToArray()[0];
+
+        int i = fields.IndexOf(field);
+
+        fields.Remove(field);
+
+        string text = ((PdfTextFormField)field).Text;
+
+        Field.Text = newvalue;
+
+        processor.AddFormFields(Field);
+
+        //field = fields.Where(s => s.Name == name).ToArray()[0];
+
+        //i = fields.IndexOf(field);
+
+        //fields.Remove(field);
+
+        //fields.Insert(i, field);
+
+    }
+
+    static public Tag ToTag(this PdfTextSearchResults s)
+    {
+
+        Tag t = new Tag();
+
+        t.sw = s;
+
+        var ws = s.Words.Select(w => w.Text).ToList();
+
+        t.Name = string.Concat(ws);
+
+        t.r = s.Rectangles[0];
+
+        t.PageNumber = s.PageNumber;
+
+        return t;
+
+    }
+
+    static public void AddDocumentRange(this List<Spanner> s, int i, DocumentRange r, string link, string text = "")
+    {
+        int index = i / 2;
+
+        int c = s.Count;
+
+        if (c == 0)
+            return;
+
+        if (index >= c)
+            return;
+
+        s[index].AddDocumentRange(i % 2, r, link);
+    }
+
+    static public Spanner LinkToSpanner(this List<Spanner> s, string link)
+    {
+
+        foreach (var spanner in s)
+        {
+            if (spanner.linkfirst == link || spanner.linksecond == link)
+                return spanner;
+        }
+        return null;
+    }
+
+}
+public class PDF
+{
+    public static TreeView tv { get; set; }
+
+    public static TreeView tvg { get; set; }
+
+    public PdfViewer pdfViewer { get; set; }
+
+    public RichEditControl rec { get; set; }
+
+    List<Spanner> spanners = new List<Spanner>();
+
+    List<Spanner> ww = new List<Spanner>();
+
+    List<Spanner> f = new List<Spanner>();
+
+    public List<PdfAcroFormField> fields = new List<PdfAcroFormField>();
+
+    MemoryStream msbase = new MemoryStream();
+
+    MemoryStream msworking = new MemoryStream();
+
+    Dictionary<string, PdfAcroFormTextBoxField> dictLink2T = new Dictionary<string, PdfAcroFormTextBoxField>();
+
+
+    public PDF()
+    {
+
+    }
+
+    public void RemoveTagByIndex(string tg, int index)
+    {
+        var t = SearchEditControlRanges(tg);
+
+        if(index >= t.Count)
+        {
+            MessageBox.Show("Index of of range");
+            return;
+        }
+
+        var range = t[index];
+
+        var document = rec.Document;
+
+        CharacterProperties Formatting = document.BeginUpdateCharacters(range);
+
+        DocumentRange start = document.CreateRange(range.End.ToInt(), 3);
+
+        document.Replace(start, "   ");
+
+        start = document.CreateRange(range.Start.ToInt(), 3);
+
+        document.Replace(start, "   ");
+    
+        document.EndUpdateCharacters(Formatting);
+    }
+
+
+    public void AddTag(TagKind t)
+    {
+        if(rec == null || rec.Document == null)
+        {
+            MessageBox.Show("No docx file loaded.");
+            return;
+        }
+        DocumentRange selection = rec.Document.Selection;
+        string selectedText = rec.Document.GetText(selection);
+
+        if (string.IsNullOrEmpty(selectedText))
+        {
+            MessageBox.Show("No text selected to tagging.");
+            return;
+        }
+
+        string tag = @t.ToStringEx();
+
+        var document = rec.Document;
+
+        //Provide access to the character properties
+        CharacterProperties Formatting = document.BeginUpdateCharacters(selection);
+
+        document.InsertText(selection.End, "   ");
+        document.InsertText(selection.End, tag);
+
+        document.InsertText(selection.Start, "   ");
+        document.InsertText(selection.Start, tag);
+
+     
+        document.EndUpdateCharacters(Formatting);
+
+    }
+
+    public List<string> GetTags(string tg)
+    {
+        var T = SearchEditControl(tg);
+        return T;
+    }
+
+    public string  GetText(string tg, int index)
+    {
+        var T = SearchEditControlText(tg);
+        return T[index];
+    }
+
+    public List<string> GetTags(TagKind t)
+    {
+        var T = SearchEditControl(t.ToStringEx());
+        return T;
+    }
+
+    public void SaveToStream(MemoryStream s)
+    {
+        rec.SaveDocument(s, DocumentFormat.OpenXml);
+       // pdfViewer.LoadDocument(s);
+    }
+
+    public void LoadFiles()
+    {
+        rec.LoadDocument("d.docx");
+      
+       // rec.ExportToPdf("d.pdf");
+       // SaveToStream(msbase);
+      //  pdfViewer.LoadDocument("d.pdf");
+      //  pdfViewer.UriOpening += PdfViewer_UriOpening;
+    }
+
+    public void LoadFilesForEdit()
+    {
+        if (pdfViewer.IsDocumentOpened)
+            pdfViewer.CloseDocument();
+
+        rec.LoadDocument("d.docx");
+
+        rec.ExportToPdf("d.pdf");
+        SaveToStream(msbase);
+        pdfViewer.LoadDocument("d.pdf");
+        pdfViewer.UriOpening += PdfViewer_UriOpening;
+        pdfViewer.DocumentClosing += PdfViewer_DocumentClosing;
+    }
+
+    private void PdfViewer_DocumentClosing(object sender, PdfDocumentClosingEventArgs e)
+    {
+     
+        e.Cancel = true;
+    }
+
+    public void ReloadEditedFiles()
+    {
+        if (pdfViewer.IsDocumentOpened)
+            pdfViewer.CloseDocument();
+
+      //  rec.LoadDocument("d.docx");
+
+        rec.ExportToPdf("d.pdf");
+       // SaveToStream(msbase);
+        pdfViewer.LoadDocument("d.pdf");
+        pdfViewer.UriOpening += PdfViewer_UriOpening;
+
+        Load();
+    }
+    private void PdfViewer_UriOpening(object sender, PdfUriOpeningEventArgs e)
+    {
+        var s = e.Uri.OriginalString;
+        //MessageBox.Show(s);
+        CheckIfNeeded(s);
+
+        e.Cancel = true;
+    }
+
+    public void Load(bool saveOnly = false)
+    {
+        List<Spanner> q = NewMethod("<S>").ToArray().ToList();
+        spanners = q;
+        SearchEditControl("<S>", q);//U+2611
+        string codePoint = "2611";
+        int code = int.Parse(codePoint, System.Globalization.NumberStyles.HexNumber);
+        string unicodeString = char.ConvertFromUtf32(code);
+        foreach (var s in spanners)
+        {
+         
+
+            SubDocument doc = s.rsecond.BeginUpdateDocument();
+
+            //var p = rec.Document.CreatePosition(s.rsecond.End.ToInt());
+
+            //var rr = rec.Document.CreateRange(p, 3);
+
+            //string plainText = doc.GetText(s.rsecond);
+            //MessageBox.Show(plainText, "Selected Text");
+
+          
+            //rec.Document.Replace(rr, "");
+            rec.Document.Replace(s.rfirst, unicodeString);
+            rec.Document.Replace(s.rsecond, unicodeString);
+
+            s.rsecond.EndUpdateDocument(doc);
+        }
+        var www = NewMethod("<T>").ToArray().ToList();
+       // SearchEditControl(rec, "<T>", www, "t");
+
+        var f = NewMethod("<F>").ToArray().ToList();
+        SearchEditControl("<F>", f, "f");
+        foreach (var s in f)
+        {
+         
+
+            codePoint = "23FA";// "2615";
+            code = int.Parse(codePoint, System.Globalization.NumberStyles.HexNumber);
+            unicodeString = char.ConvertFromUtf32(code);
+
+            DocumentRange range = s.rsecond;
+
+            var p = rec.Document.CreatePosition(range.End.ToInt());
+
+            var rr = rec.Document.CreateRange(p, 1);
+
+          // SubDocument doc = range.BeginUpdateDocument();
+          //  string plainText = doc.GetText(range);
+          // // MessageBox.Show(plainText, "Selected Text");
+           
+          ////  var r = doc.InsertText(range.End, "<-");
+            rec.Document.Replace(rr, unicodeString);
+          //  range.EndUpdateDocument(doc);
+
+            //  rec.Document.Replace(s.rsecond, "");
+           
+        }
+        if (saveOnly)
+        {
+            pdfViewer.CloseDocument();
+            rec.ExportToPdf("d.pdf");
+            return;
+        }
+
+        Modify(www, f);
+
+    }
+
+    private static List<Spanner> NewMethod(string s)
+    {
+        List<Spanner> spanners = new List<Spanner>();
+        PdfTextSearchParameters c = new PdfTextSearchParameters();
+        c.WholeWords = false;
+        c.CaseSensitive = true;
+        List<PdfTextSearchResults> WordCoordinates = new List<PdfTextSearchResults>();
+        using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+        {
+            processor.LoadDocument("d.pdf");
+            PdfTextSearchResults currentWords = processor.FindText(s, c);
+            while (currentWords.Status == PdfTextSearchStatus.Found)
+            {
+                WordCoordinates.Add(currentWords);
+                currentWords = processor.FindText(s, c);
+            }
+
+        var q = WordCoordinates.ToArray().ToList();
+        while (q.Count > 1)
+        {
+            spanners.Add(Spanner.ToSpanner(q[0].ToTag(), q[1].ToTag()));
+
+               // var text = spanners[spanners.Count - 1].GetText(processor);
+               // MessageBox.Show(text);
+
+                q.RemoveAt(0);
+            q.RemoveAt(0);
+        }
+
+    }
+        return spanners;
+    }
+
+    CharacterProperties cp = null;
+
+    double fontsize = 0;
+    string ft = "";
+
+
+    private List<string> SearchEditControl(string text)
+    {
+        var document = rec.Document;
+
+        List<string> t = new List<string>();
+      
+        ISearchResult searchResult = document.StartSearch(text);
+
+        while (searchResult.FindNext())
+        {
+            var start = searchResult.CurrentResult.Start;
+
+            if (searchResult.FindNext())
+            {
+                var end = searchResult.CurrentResult.Start;
+
+                var range = document.CreateRange(start, end.ToInt() - start.ToInt());
+
+                t.Add(document.GetText(range));
+            }
+
+        }
+
+        return t;
+    }
+    private List<string> SearchEditControlText(string text)
+    {
+        var document = rec.Document;
+
+        List<string> t = new List<string>();
+
+        ISearchResult searchResult = document.StartSearch(text);
+
+        while (searchResult.FindNext())
+        {
+            var start = searchResult.CurrentResult.Start;
+
+          //  var s = document.CreateRange(document.CreatePosition(start.ToInt() + 3), 1);
+
+            if (searchResult.FindNext())
+            {
+                var end = searchResult.CurrentResult.Start;
+
+                var range = document.CreateRange(start.ToInt() + 3, end.ToInt() - start.ToInt() - 3);
+
+                t.Add(document.GetText(range));
+            }
+
+        }
+
+        return t;
+    }
+    private List<DocumentRange> SearchEditControlRanges(string text)
+    {
+        var document = rec.Document;
+
+        List<DocumentRange> t = new List<DocumentRange>();
+
+        ISearchResult searchResult = document.StartSearch(text);
+
+        while (searchResult.FindNext())
+        {
+            var start = searchResult.CurrentResult.Start;
+
+            if (searchResult.FindNext())
+            {
+                var end = searchResult.CurrentResult.Start;
+
+                var range = document.CreateRange(start, end.ToInt() - start.ToInt());
+
+                t.Add(range);
+            }
+
+        }
+
+        return t;
+    }
+
+    private void SearchEditControl(string text, List<Spanner> spanners, string prefix = "")
+    {
+
+        List<DocumentRange> results = new List<DocumentRange>();
+        var document = rec.Document;
+        ISearchResult searchResult = rec.Document.StartSearch(text);
+
+        while (searchResult.FindNext())
+        {
+            cp = rec.Document.BeginUpdateCharacters(searchResult.CurrentResult.End, 1);
+
+            ft = cp.FontName;
+            fontsize = cp.FontSize.Value;
+
+            // cp.Bold = true;
+            cp.ForeColor = System.Drawing.Color.Blue;
+            cp.BackColor = System.Drawing.Color.Yellow;
+            cp.Underline = UnderlineType.ThickSingle;
+            rec.Document.EndUpdateCharacters(cp);
+            results.Add(searchResult.CurrentResult);
+           
+        }
+        int k = 0;
+        int i = 0;
+        foreach (var r in results)
+        {
+            //string Text = "";
+            //if (!string.IsNullOrEmpty(prefix))
+            if(text.Equals("<S>"))
+            if (i % 2 == 1)
+            {
+                        var range = rec.Document.CreateRange(results[i].Start, results[i].Length/*+1*/);
+                        var Text = rec.Document.GetText(range);
+              //  MessageBox.Show(Text);
+                rec.Document.Replace(range, "    ");
+
+            }
+            //        var a = results[i + 1].Start.ToInt();
+
+            //        var b = results[i].End.ToInt();
+
+            //        var range = rec.Document.CreateRange(results[i - 1].End, results[i].Start.ToInt() - results[i - 1].End.ToInt());
+
+            //        Text = rec.Document.GetText(range);
+
+            //        if (!Text.StartsWith("F"))
+
+            //            Text = "";
+            //    };
+
+            //  else continue;
+            string link = i.ToString();
+        //    if (string.IsNullOrEmpty(Text))
+            {
+                var name = prefix.StartsWith("f") ? (i / 2).ToString() : i.ToString();
+
+                var h = document.Hyperlinks.Create(r.End, 1);
+                h.NavigateUri = prefix + name;
+                h.ToolTip = prefix + name;
+            }
+            //else
+            //{
+            //    var h = document.Hyperlinks.Create(r.End, 4);
+            //    h.NavigateUri = "6";
+            //    h.ToolTip = prefix + i.ToString();
+            //}
+            //if (!string.IsNullOrEmpty(Text))
+            //{
+            //    //            h.NavigateUri = prefix + Text;
+            //}
+            spanners.AddDocumentRange(i, r, link, "Text");
+            i++;
+        }
+    }
+    public void CheckIfNeeded(string link)
+    {
+
+        if (link.StartsWith("f"))
+        {
+            if (pdfViewer.IsDocumentOpened)
+                pdfViewer.CloseDocument();
+
+            link.AddAndReplace("newvalue", dictLink2T);
+                        
+            pdfViewer.LoadDocument("d.pdf");
+
+            return;
+
+        }
+
+        var document = rec.Document;
+        document.BeginUpdate();
+
+        //DocumentRange range = s.rfirst;
+        //DocumentRange rr = s.rsecond;
+        //CharacterProperties cp = document.BeginUpdateCharacters(range.Start, rr.Start.ToInt() - range.End.ToInt());
+
+        ////cp.FontName = "Comic Sans MS";
+        //if (s.isActive)
+        //{
+        //    // cp.FontSize = 18;
+        //    cp.ForeColor = Color.Blue;
+        //}
+        //else
+        //{
+        //    //  cp.FontSize = 14;
+        //    cp.ForeColor = Color.Black;
+        //}
+        //s.isActive = !s.isActive;
+        //cp.BackColor = Color.Snow;
+        //cp.Underline = UnderlineType.DoubleWave;
+        //cp.UnderlineColor = Color.Red;
+
+        //document.EndUpdateCharacters(cp);
+        var b = rec.Document.Hyperlinks.Where(s => s.NavigateUri.StartsWith("f")).ToArray();
+       // foreach (var h in b)
+            
+        //    rec.Document.Hyperlinks.Remove(h);
+        var ww = NewMethod("<T>").ToArray().ToList();
+        var ff = NewMethod("<F>").ToArray().ToList();
+        // SearchEditControl(rec, "<T>", ww, "f");
+        document.EndUpdate();
+        ModifyEx(ww, ff);
+        //f = ff;
+        this.ww = ww;
+        //  Update();
+    }
+
+    public void Modify(List<Spanner> wws, List<Spanner> ff)
+    {
+        if (PDF.tv != null)
+            PDF.tv.Nodes.Clear();
+
+
+        if (pdfViewer.IsDocumentOpened)
+            pdfViewer.CloseDocument();
+
+
+        List<PdfTextFormField> fl = new List<PdfTextFormField>();
+
+        using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+        {
+            processor.LoadDocument("d.pdf");
+
+            if (processor.Document.AcroForm != null)
+            {
+                int i = 0;
+                foreach (var f in processor.Document.AcroForm.Fields)
+                {
+                    PdfTextFormField tf = (PdfTextFormField)f;
+                    if (ww.Count > i)
+                        ww[i++].Text = tf.Text;
+
+                    if (dictLink2T.ContainsKey(tf.Name))
+                    {
+                        dictLink2T[tf.Name].Text = tf.Text;
+                    }
+
+                    fl.Add(tf);
+                }
+            }
+            processor.CloseDocument();
+        }
+
+        pdfViewer.CloseDocument();
+
+        rec.ExportToPdf("d.pdf");
+
+
+        float vScrollPosition = pdfViewer.VerticalScrollPosition;
+        pdfViewer.SuspendLayout();
+        pdfViewer.CloseDocument();
+        List<PdfTextSearchResults> WordCoordinates = new List<PdfTextSearchResults>();
+        using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+        {
+            dictLink2T = new Dictionary<string, PdfAcroFormTextBoxField>();
+            rec.ExportToPdf("d.pdf");
+            processor.LoadDocument("d.pdf");
+            int i = 0;
+            int k = 0;
+            foreach (var s in wws)
+            {
+                double top = s.first.Top;
+
+                double left = s.first.Left;
+
+                double bottom = s.second.Top - s.second.Height;
+
+                double right = s.second.Left + s.second.Width;
+
+                string Name = "textbox" + i++.ToString();
+
+            //    if (!string.IsNullOrEmpty(s.TextForLink))
+
+             //       Name = s.TextForLink;
+
+                PdfRectangle r = new PdfRectangle(left, bottom, right, top);
+
+                PdfAcroFormTextBoxField textBox = new PdfAcroFormTextBoxField(Name, s.f.PageNumber, r);
+
+                textBox.Appearance.FontFamily = ft;
+                textBox.Appearance.FontSize = (float)fontsize;
+  
+                if(!dictLink2T.ContainsKey(Name))
+                    dictLink2T.Add(Name, textBox);
+
+                textBox.Text = GetText("<T>", k++);
+                if (ww.Count > k)
+                {
+                    var n = ww.Where(c => c.Name == Name).ToList();
+
+                    if (n.Count > 0)
+                        textBox.Text = n[0].Text;// ww[k++].Text;
+
+                    var nn = fl.Where(c => c.Name == Name).ToList();
+                    if (nn.Count > 0)
+                        textBox.Text = nn[0].Text;
+                }
+                textBox.Appearance.BackgroundColor = new PdfRGBColor(0.8, 0.9, 0.8);
+             //   textBox.Appearance.FontSize = 12;
+                textBox.Multiline = true;
+                processor.AddFormFields(textBox);
+                s.textBox = textBox;
+
+                if (PDF.tv != null)
+                    PDF.tv.ToNode(textBox);
+            }
+            i = 0;
+            k = 0;
+            foreach (var s in ff)
+            {
+                //if (s.textBox == null)
+                //            continue;
+                double top = s.first.Top;
+
+                double left = s.first.Left;
+
+                double bottom = s.second.Top - s.second.Height;
+
+                double right = s.second.Left + s.second.Width + 1;
+
+                PdfRectangle r = new PdfRectangle(left, bottom, right, top);
+
+                var name = "f" + i++.ToString();
+
+                PdfAcroFormTextBoxField textBox = new PdfAcroFormTextBoxField(name, s.f.PageNumber, r);
+
+                dictLink2T.Add(name, textBox);
+
+                textBox.Text = GetText("<F>", k++);
+
+                textBox.Appearance.BackgroundColor = new PdfRGBColor(0.8, 0.9, 0.8);
+
+                textBox.Appearance.FontSize = fontsize;
+
+                textBox.Multiline = true;
+
+                processor.AddFormFields(textBox);
+
+                s.textBox = textBox;
+
+                if (PDF.tv != null)
+                    PDF.tv.ToNode(textBox);
+            }
+            processor.SaveDocument("d.pdf");
+        }
+        pdfViewer.LoadDocument("d.pdf");
+        pdfViewer.VerticalScrollPosition = vScrollPosition;
+        pdfViewer.ResumeLayout();
+    }
+
+    public void ModifyEx(List<Spanner> wws, List<Spanner> ff)
+    {
+        if (pdfViewer.IsDocumentOpened)
+            pdfViewer.SaveDocument("d.pdf");
+
+        List<PdfTextFormField> fl = new List<PdfTextFormField>();
+
+        using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+        {
+            processor.LoadDocument("d.pdf");
+
+            if (processor.Document.AcroForm != null)
+            {
+                int i = 0;
+                foreach (var f in processor.Document.AcroForm.Fields)
+                {
+                    PdfTextFormField tf = (PdfTextFormField)f;
+                    if (ww.Count > i)
+                        ww[i++].Text = tf.Text;
+
+                    fl.Add(tf);
+                }
+            }
+            processor.CloseDocument();
+        }
+        float vScrollPosition = pdfViewer.VerticalScrollPosition;
+        pdfViewer.SuspendLayout();
+        pdfViewer.CloseDocument();
+        List<PdfTextSearchResults> WordCoordinates = new List<PdfTextSearchResults>();
+        using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+        {
+         //   dictLink2T = new Dictionary<string, PdfAcroFormTextBoxField>();
+           // rec.ExportToPdf("d.pdf");
+            processor.LoadDocument("d.pdf");
+            int i = 1;
+            int k = 0;
+            foreach (var s in wws)
+            {
+                string Name = "textbox" + i++.ToString();
+
+                processor.AddAndReplace(dictLink2T, Name);
+
+                continue;
+
+                double top = s.first.Top;
+
+                double left = s.first.Left;
+
+                double bottom = s.second.Top - s.second.Height;
+
+                double right = s.second.Left + s.second.Width - 1;
+
+               // string Name = "textbox" + i++.ToString();
+
+                //    if (!string.IsNullOrEmpty(s.TextForLink))
+
+                //       Name = s.TextForLink;
+
+                PdfRectangle r = new PdfRectangle(left, bottom, right, top);
+
+                PdfAcroFormTextBoxField textBox = new PdfAcroFormTextBoxField(Name, s.f.PageNumber, r);
+
+             //   if (!dictLink2T.ContainsKey(Name))
+
+             //       dictLink2T.Add(Name, textBox);
+
+                textBox.Text = "";
+                if (ww.Count > k)
+                {
+                    var n = ww.Where(c => c.Name == Name).ToList();
+
+                    if (n.Count > 0)
+                        textBox.Text = n[0].Text;// ww[k++].Text;
+
+                    var nn = fl.Where(c => c.Name == Name).ToList();
+                    if (nn.Count > 0)
+                        textBox.Text = nn[0].Text;
+                }
+                textBox.Appearance.BackgroundColor = new PdfRGBColor(0.8, 0.9, 0.8);
+                textBox.Appearance.FontSize = 12;
+                textBox.Multiline = true;
+                processor.AddFormFields(textBox);
+                s.textBox = textBox;
+            }
+            i = 1;
+            foreach (var s in ff)
+            {
+                var name = "f" + i++.ToString();
+
+                processor.AddAndReplace(dictLink2T, name);
+
+                continue;
+
+                //if (s.textBox == null)
+                //            continue;
+                double top = s.first.Top;
+
+                double left = s.first.Left;
+
+                double bottom = s.second.Top - s.second.Height;
+
+                double right = s.second.Left + s.second.Width;
+
+                PdfRectangle r = new PdfRectangle(left, bottom, right, top);
+
+              
+
+                PdfAcroFormTextBoxField textBox = new PdfAcroFormTextBoxField(name, s.f.PageNumber, r);
+
+                dictLink2T.Add(name, textBox);
+
+                textBox.Text = "-------";
+
+                textBox.Appearance.BackgroundColor = new PdfRGBColor(0.8, 0.9, 0.8);
+
+                textBox.Appearance.FontSize = 12;
+
+                textBox.Multiline = true;
+
+                processor.AddFormFields(textBox);
+
+                s.textBox = textBox;
+            }
+            processor.SaveDocument("d.pdf");
+        }
+        pdfViewer.LoadDocument("d.pdf");
+        pdfViewer.VerticalScrollPosition = vScrollPosition;
+        pdfViewer.ResumeLayout();
+    }
+    public void Add(PdfAcroFormTextBoxField f)
+    {
+
+    }
+    public void Replace(PdfAcroFormTextBoxField t = null)
+    {
+        using (PdfDocumentProcessor processor = new PdfDocumentProcessor())
+        {
+            processor.LoadDocument("d.pdf");
+
+            if (processor.Document.AcroForm != null)
+            {
+                var fields = processor.Document.AcroForm.Fields;
+
+                int i = 0;
+
+                var F = new List<PdfInteractiveFormField>();
+
+                F.AddRange(fields.ToList());
+
+                fields.Clear();
+
+                // fields.IndexOf(t);
+
+                var name = fields[1].Name;
+
+                var index = fields.IndexOf(fields[1]);
+
+                foreach (var f in processor.Document.AcroForm.Fields)
+                {
+                    PdfTextFormField ff = (PdfTextFormField)f;
+                    //PdfAcroFormTextBoxField
+                    //  ww[i++].Text = ff.Text;
+                }
+            }
+            processor.CloseDocument();
+        }
+    }
+
+    public enum TagKind{
+
+        T,
+        F,
+        S
+    }
+}
+
